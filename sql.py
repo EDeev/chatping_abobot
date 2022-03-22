@@ -6,6 +6,7 @@ class SQLighter:
         """Подключаемся к БД и сохраняем курсор соединения"""
         self.connection = sqlite3.connect(database)
         self.cursor = self.connection.cursor()
+        self.cursor.execute("PRAGMA temp_store = 2")
 
     # СВЯЗКА ГРУППЫ
     def group_exists(self, id_group):

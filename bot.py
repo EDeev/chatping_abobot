@@ -1,5 +1,7 @@
-import logging, random, pymorphy2, requests, asyncio, emoji, base, re
+import logging, random, pymorphy2, requests
+import asyncio, emoji, base, re, os
 
+from gtts import gTTS
 from sql import SQLighter
 from datetime import datetime
 from script import cheker, translator, notice, lang_form, times, autozak, update_stat, revers
@@ -123,10 +125,12 @@ async def events(call: types.CallbackQuery):
                                    'выместить злость на кого-нибудь\n*"Число от ... до ..."* - случайное значение из '
                                    'диапозона\n*"Подраться с ..."* - повод кого-нибудь побить\n*"Переведи (..) - ..."* '
                                    '- перевод слова на керпичный язык\n*"Дай блять совет!"* - даёт рандомный охуенный '
-                                   'совет\n*"Переверни - ..."* - переворачивает слова в предложении',
+                                   'совет\n*"Переверни - ..."* - переворачивает слова в предложении\n*"Озвучь - ..."* '
+                                   '- озвучивает написанный текст',
                               parse_mode=types.ParseMode.MARKDOWN)
 
 
+# ОСТАЛЬНЫЕ КОМАНДЫ
 @dp.message_handler(commands=['all'], commands_prefix='@/')
 async def always(message: types.Message):
     update_stat(3, message, True)
@@ -322,7 +326,8 @@ async def update(message: types.Message):
     update_stat(3, message, True)
     text_edit = re.sub(r'[^\w\s]', '', message.text.lower()).split()
     if len(text_edit) == 2:
-        db.edit_name(message.from_user.id, text_edit[1], message.chat.id, 1)
+        norm = morph.parse(text_edit[1])[0].normal_form
+        db.edit_name(message.from_user.id, norm, message.chat.id, 1)
         name_edit = db.name_lst(message.chat.id)[db.id_lst(message.chat.id).index(str(message.from_user.id))]
         await message.reply(f'{name_edit.title()}, ваше имя было успешно изменено)')
     else:
@@ -381,6 +386,7 @@ async def closing(message: types.Message):
             await message.answer("У вас уже отключены текстовые ивенты!")
 
 
+# ФИКСАЦИЯ СТАТИСТИКИ СООБЩЕНИЙ
 @dp.message_handler(
     content_types=["migrate_to_chat_id", "migrate_from_chat_id", "new_chat_title", "new_chat_photo", "pinned_message", 
                    "voice_chat_scheduled", "voice_chat_started", "voice_chat_ended", "voice_chat_participants_invited",
@@ -477,6 +483,14 @@ async def send_events(message: types.Message):
                 await message.answer(revers(message.text[22:], False))
             return
 
+        if len(original) > 1 and no_pct.split()[0] == 'озвучь' and "озвучь - " in txt:
+            text_to_voice = message.text[9:]
+            tts = gTTS(text_to_voice, lang='ru')
+            tts.save('voice.ogg')
+            await bot.send_voice(chat_id=message.chat.id, voice=open('voice.ogg', 'rb'), 
+                                 caption=f"<b>{text_to_voice}</b>", parse_mode=types.ParseMode.HTML)
+            os.remove("voice.ogg")
+
         # РАНДОМ ИВЕНТЫ
         if len(original) >= 2:
             if "подраться с" in txt:
@@ -495,47 +509,98 @@ async def send_events(message: types.Message):
 
         # ИВЕНТ ВЗАИМОДЕЙСТВИЯ
         if len(original) >= 2:
-            for word in base.TMOK_LIST:
-                if word in txt:
-                    lst = [original[i] for i in range(len(original)) if i != 0]
-                    text = " ".join(lst)
+            if "путин" not in txt:
+                for word in base.TMOK_LIST:
+                    if word in txt:
+                        lst = [original[i] for i in range(len(original)) if i != 0]
+                        text = " ".join(lst)
 
-                    slv = morph.parse(original[0].lower())[0]
+                        slv = morph.parse(original[0].lower())[0]
 
-                    await message.bot.send_photo(chat_id=id_group,
-                                                 photo=open(f"data/tmok/({random.randint(1, 4)}).jpg", 'rb'),
-                                                 caption=f"{message.from_user.first_name} "
-                                                         f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}")
+                        await message.bot.send_photo(chat_id=id_group,
+                                                     photo=open(f"data/tmok/({random.randint(1, 4)}).jpg", 'rb'),
+                                                     caption=f"{message.from_user.first_name} "
+                                                             f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}")
 
-            for word in base.KILL_LIST:
-                if word in txt:
-                    lst = [original[i] for i in range(len(original)) if i != 0]
-                    text = " ".join(lst)
+                for word in base.KILL_LIST:
+                    if word in txt:
+                        lst = [original[i] for i in range(len(original)) if i != 0]
+                        text = " ".join(lst)
 
-                    slv = morph.parse(original[0].lower())[0]
+                        slv = morph.parse(original[0].lower())[0]
 
-                    await message.bot.send_photo(chat_id=id_group,
-                                                 photo=open(f"data/kill/({random.randint(1, 6)}).jpg", 'rb'),
-                                                 caption=f"{message.from_user.first_name} "
-                                                         f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}")
-            
-            for word_1 in base.QUAT_LIST[0]:
-                flag = False
-                for word_2 in base.QUAT_LIST[1]:
-                    for word_3 in base.QUAT_LIST[2]:
-                        if no_pct == " ".join([word_1, word_2, word_3]):
-                            word = (requests.get('http://fucking-great-advice.ru/api/random').text).split('"')[5]
-                            await message.reply(word)
-                            flag = True
+                        await message.bot.send_photo(chat_id=id_group,
+                                                     photo=open(f"data/kill/({random.randint(1, 6)}).jpg", 'rb'),
+                                                     caption=f"{message.from_user.first_name} "
+                                                             f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}")
+                
+                for word_1 in base.QUAT_LIST[0]:
+                    flag = False
+                    for word_2 in base.QUAT_LIST[1]:
+                        for word_3 in base.QUAT_LIST[2]:
+                            if no_pct == " ".join([word_1, word_2, word_3]):
+                                word = (requests.get('http://fucking-great-advice.ru/api/random').text).split('"')[5]
+                                await message.reply(word)
+                                flag = True
+                        if flag:
+                            break
                     if flag:
                         break
-                if flag:
-                    break
+
+                if no_pct == 'совет дня':
+                    word = (requests.get('http://fucking-great-advice.ru/api/latest').text).split('"')[5]
+                    await message.reply(word)
+
+        # PUTIN
+        if len(original) >= 2:
+            if "поклониться путину" in txt:
+                await message.bot.send_photo(chat_id=id_group,
+                                             photo=open("data/putin/putin.jpg", 'rb'),
+                                             caption=f"{message.from_user.first_name}! "
+                                                     f"Я рад, что ты выбрал правильную сторону)")
+                return
+
+            if "чмокнуть путина" in txt:
+                if message.from_user.first_name != "Вадим":
+                    await message.bot.send_photo(chat_id=id_group,
+                                                 photo=open(f"data/putin/chmok/({random.randint(1, 5)}).jpg", 'rb'),
+                                                 caption=f"{message.from_user.first_name}, "
+                                                         f"был удостоен чести чмокнуть великого!")
+                else:
+                    await message.bot.send_photo(chat_id=id_group,
+                                                 photo=open(f"data/putin/chmok/vadim.jpg", 'rb'),
+                                                 caption=f"{message.from_user.first_name}, а ты ему сразу приглянулся)")
+                return
+
+            if "путин вор" in txt:
+                await message.bot.send_photo(chat_id=id_group,
+                                             photo=open(f"data/putin/autozak/({random.randint(1, 4)}).jpg", 'rb'),
+                                             caption=f"{message.from_user.first_name}! Ваш автозак уже в пути! "
+                                                     f"Примерное время ожидания составляет "
+                                                     f"{autozak(message.from_user.first_name)} Рекомендуеться "
+                                                     f"подготовить паспорт и наркотики для избежания лишней работы!")
+                return
+
+            if "лёша выйдет погулять" in txt:
+                await message.bot.send_photo(chat_id=id_group,
+                                             photo=open("data/putin/lesha.jpg", 'rb'),
+                                             caption=f"{message.from_user.first_name}, нет! Он сидит дома из-за "
+                                                     f"плохого поведения, приходи через {times()}")
+                return
 
         # ЛИСТ КОМАНДЫ
         if names:
-            await message.reply(notice(names, False, id_group, message.from_user.id), types.ParseMode.HTML)
-            return
+            if "крид" not in norm:
+                await message.reply(notice(names, False, id_group, message.from_user.id), types.ParseMode.HTML)
+                return
+            else:
+                if int(id_group) == int(base.MY_GROUP):
+                    if random.randint(1, 10) == 1:
+                        await message.reply("Заебал уже, со своим ебучим Игорем Кридом")
+                        return
+                else:
+                    await message.reply(notice(names, False, id_group, message.from_user.id), types.ParseMode.HTML)
+                    return
 
         # ПЕРЕВОДЧИК СЛОВ
         if cheker(bk, original, id_group, user) == len(txt):

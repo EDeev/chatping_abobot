@@ -33,6 +33,16 @@ def times():
         return f'{itg} дней)'
 
 
+def autozak(name):
+    num = str(len(name))
+    if int(num[-1]) == 1:
+        return f'{num} минута.'
+    elif 1 < int(num[-1]) < 5:
+        return f'{num} минуты.'
+    else:
+        return f'{num} минут.'
+
+
 def update_stat(var, message, main=False):
     db.statistics_group(message.chat.id, var)
     db.user_statistic(message.from_user.id, message.chat.id, var)
