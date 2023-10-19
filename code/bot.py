@@ -1,5 +1,7 @@
 import logging, random, pymorphy2, requests
 import asyncio, base, re, os, enchant, sql
+import speech_recognition as sr
+import soundfile as sf
 
 from gtts import gTTS
 from script import checker, translator, notice, lang_form, revers, upd_stat
@@ -98,7 +100,7 @@ async def helps(message: types.Message):
 async def author(call: types.CallbackQuery):
     await call.message.answer(text='*| АВТОР |*\n\n*>>* Этот бот, как бы это не печально звучало, но одна из лучших'
                                    ' моих работ и если кого-нибудь у меня получится действительно достойный продукт,'
-                                   ' вы сможете о нём узнать в моём телеграм канале *@itsproger*', parse_mode=types.ParseMode.MARKDOWN)
+                                   ' вы сможете о нём узнать в моём телеграм канале *@programium*', parse_mode=types.ParseMode.MARKDOWN)
 
 
 @dp.callback_query_handler(text="fun")
@@ -112,6 +114,7 @@ async def function(call: types.CallbackQuery):
 @dp.callback_query_handler(text="com")
 async def commands(call: types.CallbackQuery):
     await call.message.answer(text='<b>| КОМАНДЫ |</b>\n\n/all - упомянуть всех в чате\n/help - полный список функций\n'
+                                   '/recognize - транскрипция отмеченного голосового сообщения в текст\n'
                                    '/stat_group - полная статистика группы\n/stat_user - полная статистика '
                                    'отправителя\n/edit и /back_edit - первая команда даёт возможность '
                                    'сменить имя для упоминаний на любое слово, а вторая для возврата динамического '
@@ -143,6 +146,50 @@ async def every(message: types.Message):
             await message.reply('В группе состоит менее 3х человек, из-за чего команда не работает!')
     else:
         await message.reply('Эта команда предназначена для вызова в чате!')
+
+
+@dp.message_handler(commands=["recognize"])
+async def recognise(message: types.Message):
+    user_id = du.get_user_id(message.from_user.id)
+
+    if "reply_to_message" in message:
+        if "voice" in message.reply_to_message:
+
+            num = random.randint(1000, 9999)
+            audio = f"../data/voices/{user_id}_{num}.oga"
+
+            file_id = message.reply_to_message.voice.file_id
+            file = await bot.get_file(file_id)
+            file_path = file.file_path
+            await bot.download_file(file_path, audio)
+            
+            data, samplerate = sf.read(audio)
+            os.remove(audio)
+            audio = f"../data/voices/{user_id}_{num}.wav"
+            sf.write(audio, data, samplerate)
+
+            af = sr.AudioFile(audio)
+            r = sr.Recognizer()
+            with af as source:
+                r.pause_threshold = 100
+                source = r.listen(source)
+
+            try:
+                mes = await bot.send_message(chat_id=message.chat.id, text=f"Распознавание.....", 
+                                             parse_mode=types.ParseMode.MARKDOWN, reply_to_message_id=message.reply_to_message.message_id)
+                try:
+                    query = r.recognize_google(source, language='ru-RU')
+                    os.remove(audio)
+                    await mes.edit_text(f'*{message.reply_to_message.from_user.first_name} сказал(a)* "{query}"',  types.ParseMode.MARKDOWN)
+                except Exception as e:
+                    try: os.remove(audio)
+                    except Exception as e: pass
+                    
+                    await mes.edit_text("Распознать сообщение не удалось!",  types.ParseMode.MARKDOWN)
+            except Exception as e:
+                print(repr(e))
+                pass
+    return
 
 
 @dp.message_handler(commands=['stat_group'])
@@ -294,6 +341,49 @@ async def media(message: types.Message):
 async def voice(message: types.Message):
     if message.chat.id < 0: upd_stat(message.from_user.id, message.chat.id, 7, message.from_user.first_name, True)
 
+    if "voice" in message and message.chat.id < 0:
+        if message.voice.duration <= 60:
+            user_id = du.get_user_id(message.from_user.id)
+            
+            num = random.randint(1000, 9999)
+            audio = f"../data/voices/{user_id}_{num}.oga"
+
+            file_id = message.voice.file_id
+            file = await bot.get_file(file_id)
+            file_path = file.file_path
+            await bot.download_file(file_path, audio)
+
+            data, samplerate = sf.read(audio)
+            os.remove(audio)
+            audio = f"../data/voices/{user_id}_{num}.wav"
+            sf.write(audio, data, samplerate)
+
+            af = sr.AudioFile(audio)
+            r = sr.Recognizer()
+            with af as source:
+                r.pause_threshold = 100
+                source = r.listen(source)
+
+            try:
+                query = r.recognize_google(source, language='ru-RU')
+                os.remove(audio)
+
+                # ПЕРЕМЕННЫЕ
+                group_id = message.chat.id
+                unsigned = re.sub(r'[^\w\s]', '', query.lower()).split()  # СПИСОК СЛОВ БЕЗ ПУНКТУАЦИИ
+                first_form = [morph.parse(i)[0].normal_form for i in unsigned]  # СПИСОК СЛОВ В ПЕРВОЙ ФОРМЕ
+                names = [_ for _ in first_form if _ in list(map(lambda x: x[0], dg.all_names(du.get_group_id(group_id))))]
+                
+                if names:
+                    await message.reply(notice(names, False, du.get_group_id(group_id), message.from_user.id), types.ParseMode.HTML)
+                    return
+                
+            except Exception as e:
+                try: os.remove(audio)
+                except Exception as e: pass
+
+    return
+
 
 @dp.message_handler(content_types=['sticker'])
 async def stick(message: types.Message):
@@ -401,7 +491,7 @@ async def send_events(message: types.Message):
             try:
                 await message.reply(notice(names, False, du.get_group_id(group_id), user_id), types.ParseMode.HTML)
             except Exception as e:
-                return
+                pass
                 """
                 await bot.send_message(chat_id=base.TEX_GROUP, text=f"<b>[ {str(dt.now())[:-10]} ]</b> "
                                                                     f"<b><i>=></i></b> <i>{repr(e)}</i> (уведомления по именам)",
@@ -411,7 +501,7 @@ async def send_events(message: types.Message):
 
         # ПЕРЕВОДЧИК СЛОВ
         if checker([i for i in low_mes], words, group_id, user_id, name.lower()) == len(low_mes) and \
-                not any([engl_dict.check(i) for i in unsigned]):
+                not any([engl_dict.check(i) for i in unsigned if len(i) > 1]):
             await message.reply(f"[{message.from_user.first_name}](tg://user_id?id={user_id}) *>* {translator(words)}",
                                 types.ParseMode.MARKDOWN)
             return
