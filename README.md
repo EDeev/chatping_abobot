@@ -148,5 +148,6 @@ python bot.py
 ---
 
 <div align="center">
+  <sub>⭐ Если проект оказался полезным, поставьте звезду на GitHub!</sub>
   <p><sub>Создано с ❤️ от вашего дорогого - deev.space ©</sub></p>
 </div>
