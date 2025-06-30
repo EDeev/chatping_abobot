@@ -1,0 +1,34 @@
+# Core Framework Dependencies
+aiogram==3.10.0
+asyncio-mqtt==0.16.1
+
+# Database Management
+sqlite3
+
+# Natural Language Processing
+pymorphy3==1.2.1
+pymorphy3-dicts-ru==2.4.417150.4580142
+enchant==1.6.6
+
+# Speech Recognition & Synthesis
+SpeechRecognition==3.10.4
+gTTS==2.5.1
+soundfile==0.12.1
+
+# HTTP Client for API Integration
+requests==2.31.0
+
+# Audio Processing Dependencies
+pyaudio==0.2.14
+pydub==0.25.1
+
+# System Dependencies (if needed)
+# Note: Some packages may require system-level installation
+# Ubuntu/Debian: sudo apt-get install python3-enchant libenchant-2-2
+# macOS: brew install enchant portaudio
+# Windows: Download pyaudio wheel from unofficial binaries
+
+# Development Dependencies (Optional)
+# pytest==8.2.2
+# black==24.4.2
+# flake8==7.1.0
