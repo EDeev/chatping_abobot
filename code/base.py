@@ -1,8 +1,8 @@
 # ДАННЫЕ БОТА
-TOKEN = ""  # @chat_abobot
-DEBAG = "-*********"  # Технический чат
+TOKEN = "XXXXXXXXXX"  # @chat_abobot
+DEBAG = "XXXXXXXXXX"  # Технический чат
 
-TEX_GROUP = "-*********"
+TEX_GROUP = "XXXXXXXXXX"
 
 # ОБРАЩЕНИЯ К ПОЛЬЗОВАТЕЛЯМ
 KILL_LIST = ["побить", "отмудохать", "избить", "уебать", "отметелить"]

@@ -63,8 +63,7 @@ def notice(name, all_users, group_id, author):
 
     if all_users:
         name = dg.user_name(name, group_id)
-        usr = ["<a href=\""+'tg://user?id='+str(ids[i])+"\">"+names[i].title()+"</a>" for i in range(len(names))
-               if names[i] != name.lower()]
+        usr = [f"[{names[i].title()}](tg://user?id={str(ids[i])})" for i in range(len(names)) if names[i] != name.lower()]
         usr.append(f'{usr[-2]} и {usr[-1]}')
         del usr[-2], usr[-2]
         return f'{", ".join(usr)} вас вызывает {name.title()}'
@@ -75,13 +74,12 @@ def notice(name, all_users, group_id, author):
                 no_copy.append(i)
                 
         if len(no_copy) > 1:  # ПЕРЕПИСАТЬ КОД ГАВНА КУСОК
-            usr = ["<a href=\""+'tg://user?id='+str(ids[names.index(_)])+"\">"+_.title()+"</a>" for _ in no_copy
-                   if int(author) != ids[names.index(_)]]
+            usr = [f"[{_.title()}](tg://user?id={str(ids[names.index(_)])})" for _ in no_copy if int(author) != ids[names.index(_)]]
             usr.append(f'{usr[-2]} и {usr[-1]}')
             del usr[-2], usr[-2]
             return f"{', '.join(usr)} вас упомянули)"
         else:
-            usr = "<a href=\""+'tg://user?id='+str(ids[names.index(no_copy[0])])+"\">"+no_copy[0].title()+"</a>"
+            usr = f"[{no_copy[0].title()}](tg://user?id={str(ids[names.index(no_copy[0])])})"
             return f"{usr}, тебя упомянули)"
 
 
