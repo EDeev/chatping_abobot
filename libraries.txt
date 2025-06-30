@@ -1,3 +1,0 @@
-libraries:
-
-pip install random2, pymorphy2, requests, emoji, re, aiogram
