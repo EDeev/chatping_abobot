@@ -59,7 +59,7 @@ cp .env.example .env      # BOT_TOKEN from @BotFather
 docker compose up -d      # the bot and PostgreSQL
 ```
 
-Prebuilt image: `docker pull ghcr.io/edeev/chatping_abobot` or `docker pull dcr.deev.su/edeev/chatping_abobot`.
+Prebuilt image: `docker pull ghcr.io/edeev/chatping_abobot` or `docker pull git.deev.su/edeev/chatping_abobot`.
 Tables are created on first start (`code/schema.sql`).
 
 Without Docker you need:
@@ -113,7 +113,7 @@ The tests need PostgreSQL (`TEST_DATABASE_URL`). What they cover:
 
 CI runs them on Python 3.10 and 3.12.
 
-The Docker image is built on `v*` tags and published to GitHub Packages and `dcr.deev.su`.
+The Docker image is built on `v*` tags and published to GitHub Packages and `git.deev.su`.
 
 ## License
 

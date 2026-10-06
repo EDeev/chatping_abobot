@@ -56,7 +56,7 @@ cp .env.example .env      # BOT_TOKEN от @BotFather
 docker compose up -d      # бот и PostgreSQL
 ```
 
-Готовый образ: `docker pull ghcr.io/edeev/chatping_abobot` или `docker pull dcr.deev.su/edeev/chatping_abobot`.
+Готовый образ: `docker pull ghcr.io/edeev/chatping_abobot` или `docker pull git.deev.su/edeev/chatping_abobot`.
 Таблицы создаются при первом запуске (`code/schema.sql`).
 
 Без Docker нужны:
@@ -110,7 +110,7 @@ ruff check --select E9,F,B code tests && pytest
 
 CI прогоняет их на Python 3.10 и 3.12.
 
-Docker-образ собирается по тегу `v*` и публикуется в GitHub Packages и `dcr.deev.su`.
+Docker-образ собирается по тегу `v*` и публикуется в GitHub Packages и `git.deev.su`.
 
 ## Лицензия
 
