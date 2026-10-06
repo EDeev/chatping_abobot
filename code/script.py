@@ -1,12 +1,28 @@
-from base import ERR, ERR_, TRU, TRU_, ALB
+import re
 from string import digits, punctuation
-import re, sql
 
-# инициализируем соединение с БД
-db = sql.Base('../db/base.db')
-du = sql.User('../db/users.db')
-dg = sql.Group('../db/groups.db')
-dm = sql.Month('../db/month.db')
+from base import ERR, ERR_, TRU, TRU_, ALB
+# одни и те же соединения с базами, что и у обработчиков (раньше здесь открывались вторые)
+from init import db, du, dg, dm
+
+MD_SPECIAL = "_*`["
+
+
+def md(text):
+    """Экранирование для Markdown вне разметки: «_» или «*» в имени или тексте иначе ломают отправку"""
+    return "".join("\\" + ch if ch in MD_SPECIAL else ch for ch in str(text))
+
+
+def plain(text):
+    """Текст внутри *жирного* или [ссылки]: экранирование там не работает, спецсимволы убираются"""
+    return "".join(ch for ch in str(text) if ch not in MD_SPECIAL + "]")
+
+
+def join_names(items):
+    """«а», «а и б», «а, б и в»"""
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " и " + items[-1]
 
 
 def upd_stat(user_id, group_id, var_id, name, mes=False):
@@ -63,23 +79,26 @@ def notice(name, all_users, group_id, author):
 
     if all_users:
         name = dg.user_name(name, group_id)
-        usr = [f"[{names[i].title()}](tg://user?id={str(ids[i])})" for i in range(len(names)) if names[i] != name.lower()]
-        usr.append(f'{usr[-2]} и {usr[-1]}')
-        del usr[-2], usr[-2]
-        return f'{", ".join(usr)} вас вызывает {name.title()}'
+        usr = [f"[{plain(names[i].title())}](tg://user?id={str(ids[i])})" for i in range(len(names)) if names[i] != name.lower()]
+        if len(usr) < 2:
+            raise ValueError("в группе меньше трёх участников")
+        return f'{join_names(usr)} вас вызывает {md(name.title())}'
     else:
         no_copy = []
         for i in name:
             if i not in no_copy:
                 no_copy.append(i)
                 
-        if len(no_copy) > 1:  # ПЕРЕПИСАТЬ КОД ГАВНА КУСОК
-            usr = [f"[{_.title()}](tg://user?id={str(ids[names.index(_)])})" for _ in no_copy if int(author) != ids[names.index(_)]]
-            usr.append(f'{usr[-2]} и {usr[-1]}')
-            del usr[-2], usr[-2]
-            return f"{', '.join(usr)} вас упомянули)"
+        if len(no_copy) > 1:
+            # раньше при двух именах, одно из которых — автор, падало на usr[-2]
+            usr = [f"[{plain(_.title())}](tg://user?id={str(ids[names.index(_)])})" for _ in no_copy if int(author) != ids[names.index(_)]]
+            if len(usr) > 1:
+                return f"{join_names(usr)} вас упомянули)"
+            if usr:
+                return f"{usr[0]}, тебя упомянули)"
+            return None
         else:
-            usr = f"[{no_copy[0].title()}](tg://user?id={str(ids[names.index(no_copy[0])])})"
+            usr = f"[{plain(no_copy[0].title())}](tg://user?id={str(ids[names.index(no_copy[0])])})"
             return f"{usr}, тебя упомянули)"
 
 
@@ -142,7 +161,7 @@ def revers(message, var):
                 pct.append(''.join(pnc))
                 pnc = []
 
-        wrd, rev, lst, txt = no_pct.split(), [], [], []
+        wrd, rev, txt = no_pct.split(), [], []
         for i in wrd:
             word, up, itg = [i[-1 - l].lower() for l in range(len(i))], [], []
 

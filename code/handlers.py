@@ -3,16 +3,59 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ContentType
 
-import logging, random, requests, os, re
-import speech_recognition as sr
+import asyncio
+import logging
+import os
+import random
+import re
+import tempfile
+
+import requests
 import soundfile as sf
+import speech_recognition as sr
 from gtts import gTTS
 
-from init import *
-from script import *
 import base
+from init import bot, db, du, dg, dm, morph, engl_dict
+from script import upd_stat, lang_form, notice, checker, translator, revers, md, plain
 
 router = Router()
+
+
+def recognize_file(oga_path):
+    """Голосовое (OGG/Opus) → текст через Google Web Speech. Синхронно — вызывается в отдельном потоке"""
+    data, samplerate = sf.read(oga_path)
+    wav_path = oga_path[:-4] + ".wav"
+    sf.write(wav_path, data, samplerate)
+
+    r = sr.Recognizer()
+    with sr.AudioFile(wav_path) as source:
+        r.pause_threshold = 100
+        audio = r.listen(source)
+    return r.recognize_google(audio, language='ru-RU')
+
+
+async def recognize_voice(file_id):
+    """Распознавание без блокировки бота: раньше каждое голосовое в группе распознавалось прямо
+    в обработчике, и бот на это время не отвечал никому. Файлы — во временной папке на запрос
+    (раньше ../data/voices/<id>_<случайное число>, при ошибке файлы оставались)"""
+    with tempfile.TemporaryDirectory() as tmp:
+        oga = os.path.join(tmp, "voice.oga")
+        file = await bot.get_file(file_id)
+        await bot.download_file(file.file_path, oga)
+        try:
+            return await asyncio.to_thread(recognize_file, oga)
+        except sr.UnknownValueError:  # речь не разобрана
+            return None
+        except Exception:
+            logging.exception("Ошибка распознавания голосового")
+            return None
+
+
+def inflect_past(word):
+    """Глагол в прошедшем времени; если pymorphy3 не справился — как есть"""
+    form = morph.parse(word.lower())[0].inflect({'past', 'sing', 'indc'})
+    return form.word if form else word
 
 # НОВЫЕ УЧАСТНИКИ ГРУППЫ
 @router.message(F.content_type == ContentType.NEW_CHAT_MEMBERS)
@@ -26,7 +69,7 @@ async def notification(message: Message):
 
         await bot.send_message(
             message.chat.id, 
-            f'*Привет группа {message.chat.title}!*\n\n'
+            f'*Привет группа {plain(message.chat.title)}!*\n\n'
             f'Все функции вы можете узнать по команде /help! Для того, чтобы '
             f'уведомления по имени и команда /all нормально функционировали, '
             f'необходимо чтобы каждый участник группы написал хотя бы одно '
@@ -147,47 +190,20 @@ async def every(message: Message):
 # КОМАНДА RECOGNIZE
 @router.message(Command("recognize"))
 async def recognise(message: Message):
-    user_id = du.get_user_id(message.from_user.id)
+    if not (message.reply_to_message and message.reply_to_message.voice):
+        await message.reply("Ответьте этой командой на голосовое сообщение!")
+        return
 
-    if message.reply_to_message and message.reply_to_message.voice:
-        num = random.randint(1000, 9999)
-        audio = f"../data/voices/{user_id}_{num}.oga"
-
-        file_id = message.reply_to_message.voice.file_id
-        file = await bot.get_file(file_id)
-        file_path = file.file_path
-        await bot.download_file(file_path, audio)
-        
-        data, samplerate = sf.read(audio)
-        os.remove(audio)
-        audio = f"../data/voices/{user_id}_{num}.wav"
-        sf.write(audio, data, samplerate)
-
-        af = sr.AudioFile(audio)
-        r = sr.Recognizer()
-        with af as source:
-            r.pause_threshold = 100
-            source = r.listen(source)
-
-        try:
-            mes = await bot.send_message(
-                chat_id=message.chat.id, 
-                text="Распознавание.....", 
-                reply_to_message_id=message.reply_to_message.message_id
-            )
-            try:
-                query = r.recognize_google(source, language='ru-RU')
-                os.remove(audio)
-                await mes.edit_text(f'*{message.reply_to_message.from_user.first_name} сказал(a)* "{query}"')
-            except Exception:
-                try: 
-                    os.remove(audio)
-                except Exception: 
-                    pass
-                await mes.edit_text("Распознать сообщение не удалось!")
-        except Exception as e:
-            print(repr(e))
-            pass
+    mes = await bot.send_message(
+        chat_id=message.chat.id,
+        text="Распознавание.....",
+        reply_to_message_id=message.reply_to_message.message_id
+    )
+    query = await recognize_voice(message.reply_to_message.voice.file_id)
+    if query:
+        await mes.edit_text(f'*{plain(message.reply_to_message.from_user.first_name)} сказал(a)* "{md(query)}"')
+    else:
+        await mes.edit_text("Распознать сообщение не удалось!")
 
 # СТАТИСТИКА ГРУППЫ
 @router.message(Command('stat_group'))
@@ -231,7 +247,7 @@ async def stat_user(message: Message):
             name = name.word
 
         await message.answer(
-            text=f'*| СТАТИСТИКА {name.upper()} |*\n\n'
+            text=f'*| СТАТИСТИКА {plain(name.upper())} |*\n\n'
                  f'*- За всё время* / *За месяц -*\n'
                  f'*>>* Сообщений в базе *[ {group[0]} / {month[0]} ]*\n\n'
                  f'*>* Ответов *- [ {group[1]} / {month[1]} ]*\n'
@@ -263,9 +279,9 @@ async def update(message: Message):
                     db.add_edit_user(user_id)
 
                 dg.update_name(user_id, group_id, name)
-                await message.reply(f'{name.title()}, ваше имя было успешно изменено)')
+                await message.reply(f'{md(name.title())}, ваше имя было успешно изменено)')
             else:
-                await message.reply(f'{message.from_user.first_name.lower().title()}, такое имя уже присутствует в чате!')
+                await message.reply(f'{md(message.from_user.first_name.lower().title())}, такое имя уже присутствует в чате!')
         else:
             await message.reply('Вы не правильно ввели имя! Имя должно быть '
                                'из одного слова и идти сразу после команды!')
@@ -282,9 +298,9 @@ async def update_return(message: Message):
             db.del_edit_user(user_id)
             dg.update_name(user_id, group_id, name)
 
-            await message.reply(f'{name.title()}, вы успешно вернулись к динамическому изменению имени)')
+            await message.reply(f'{md(name.title())}, вы успешно вернулись к динамическому изменению имени)')
         else:
-            await message.reply(f'{name.title()}, вы не устанавливали постоянное имя!')
+            await message.reply(f'{md(name.title())}, вы не устанавливали постоянное имя!')
 
 # ВКЛЮЧЕНИЕ ТЕКСТОВЫХ ИВЕНТОВ
 @router.message(Command('start_bot'))
@@ -361,47 +377,21 @@ async def voice(message: Message):
     if message.chat.id < 0: 
         upd_stat(message.from_user.id, message.chat.id, 7, message.from_user.first_name, True)
 
-    if message.voice and message.chat.id < 0:
-        if message.voice.duration <= 60:
-            user_id = du.get_user_id(message.from_user.id)
-            
-            num = random.randint(1000, 9999)
-            audio = f"../data/voices/{user_id}_{num}.oga"
+    # упоминание по имени, произнесённому в голосовом
+    if message.voice and message.chat.id < 0 and message.voice.duration <= 60:
+        query = await recognize_voice(message.voice.file_id)
+        if not query:
+            return
 
-            file_id = message.voice.file_id
-            file = await bot.get_file(file_id)
-            file_path = file.file_path
-            await bot.download_file(file_path, audio)
+        group_id = du.get_group_id(message.chat.id)
+        unsigned = re.sub(r'[^\w\s]', '', query.lower()).split()
+        first_form = [morph.parse(i)[0].normal_form for i in unsigned]
+        chat_names = [x[0] for x in dg.all_names(group_id)]
+        names = [_ for _ in first_form if _ in chat_names]
 
-            data, samplerate = sf.read(audio)
-            os.remove(audio)
-            audio = f"../data/voices/{user_id}_{num}.wav"
-            sf.write(audio, data, samplerate)
-
-            af = sr.AudioFile(audio)
-            r = sr.Recognizer()
-            with af as source:
-                r.pause_threshold = 100
-                source = r.listen(source)
-
-            try:
-                query = r.recognize_google(source, language='ru-RU')
-                os.remove(audio)
-
-                group_id = message.chat.id
-                unsigned = re.sub(r'[^\w\s]', '', query.lower()).split()
-                first_form = [morph.parse(i)[0].normal_form for i in unsigned]
-                names = [_ for _ in first_form if _ in list(map(lambda x: x[0], dg.all_names(du.get_group_id(group_id))))]
-                
-                if names:
-                    await message.reply(notice(names, False, du.get_group_id(group_id), message.from_user.id))
-                    return
-                
-            except Exception:
-                try: 
-                    os.remove(audio)
-                except Exception: 
-                    pass
+        text = notice(names, False, group_id, message.from_user.id) if names else None
+        if text:
+            await message.reply(text)
 
 # СТИКЕРЫ
 @router.message(F.content_type == ContentType.STICKER)
@@ -431,7 +421,8 @@ async def send_events(message: Message):
     if message.chat.id < 0:
         names = [_ for _ in first_form if _ in list(map(lambda x: x[0], dg.all_names(du.get_group_id(group_id))))]
 
-    if len(words) >= 2:
+    # сообщение только из знаков препинания: дальше нужны слова (раньше — IndexError на unsigned[0])
+    if len(words) >= 2 and unsigned:
         # ПОЛЕЗНЫЕ ФУНКЦИИ
         if len(words) == 5 and "число от" in low_mes:
             try:
@@ -445,29 +436,32 @@ async def send_events(message: Message):
 
         if unsigned[0] == 'переведи':
             if "переведи - " in low_mes:
-                await message.answer(lang_form([words[_] for _ in range(len(words)) if _ > 1]))
-            elif f"переведи ({unsigned[1]}) - " in low_mes:
+                await message.answer(md(lang_form([words[_] for _ in range(len(words)) if _ > 1])))
+            elif len(unsigned) > 1 and f"переведи ({unsigned[1]}) - " in low_mes:
                 if len(unsigned[1]) == 1:
-                    await message.answer(lang_form([words[_] for _ in range(len(words)) if _ > 2], unsigned[1]))
+                    await message.answer(md(lang_form([words[_] for _ in range(len(words)) if _ > 2], unsigned[1])))
             return
 
         if unsigned[0] == 'переверни':
             if "переверни - " in low_mes:
-                await message.answer(revers(message.text[12:], True))
+                await message.answer(md(revers(message.text[12:], True)))
             elif "переверни полностью - " in low_mes:
-                await message.answer(revers(message.text[22:], False))
+                await message.answer(md(revers(message.text[22:], False)))
             return
 
         if unsigned[0] == 'озвучь' and "озвучь - " in low_mes:
             text_to_voice = message.text[9:]
-            tts = gTTS(text_to_voice, lang='ru')
-            tts.save('../data/voices/voice.ogg')
-            await bot.send_voice(
-                chat_id=group_id, 
-                voice=FSInputFile('../data/voices/voice.ogg'),
-                caption=f"*{text_to_voice}*"
-            )
-            os.remove('../data/voices/voice.ogg')
+            # синтез — в отдельном потоке и во временный файл (раньше общий voice.ogg:
+            # одновременные запросы перезаписывали друг друга)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, "voice.mp3")
+                try:
+                    await asyncio.to_thread(gTTS(text_to_voice, lang='ru').save, path)
+                except Exception:
+                    logging.exception("gTTS")
+                    await message.reply("Озвучить не получилось, попробуйте позже")
+                    return
+                await bot.send_voice(chat_id=group_id, voice=FSInputFile(path), caption=f"*{plain(text_to_voice)}*")
             return
 
         # РАНДОМ ИВЕНТЫ
@@ -477,14 +471,14 @@ async def send_events(message: Message):
             if random.randint(0, 1) == 0:
                 await message.answer_photo(
                     photo=FSInputFile(f"../data/fight/({random.randint(1, 8)}).jpg"),
-                    caption=f"{message.from_user.first_name}, ты был унижен {text.title()}"
+                    caption=f"{md(message.from_user.first_name)}, ты был унижен {md(text.title())}"
                            f", с помощью {base.VAR_LOSE[random.randint(0, 3)]}"
                 )
             else:
                 await message.answer_photo(
                     photo=FSInputFile(f"../data/fight/({random.randint(1, 8)}).jpg"),
-                    caption=f"{message.from_user.first_name}, ты победил в драке "
-                           f"с {text.title()}, {base.VAR_WIN[random.randint(0, 1)]}"
+                    caption=f"{md(message.from_user.first_name)}, ты победил в драке "
+                           f"с {md(text.title())}, {base.VAR_WIN[random.randint(0, 1)]}"
                 )
 
         # ИВЕНТ ВЗАИМОДЕЙСТВИЯ
@@ -493,11 +487,10 @@ async def send_events(message: Message):
                 lst = [words[i] for i in range(len(words)) if i != 0]
                 text = " ".join(lst)
 
-                slv = morph.parse(words[0].lower())[0]
                 await message.answer_photo(
                     photo=FSInputFile(f"../data/tmok/({random.randint(1, 4)}).jpg"),
-                    caption=f"{message.from_user.first_name} "
-                           f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}"
+                    caption=f"{md(message.from_user.first_name)} "
+                           f"{inflect_past(words[0])} {md(text)}"
                 )
 
         for word in base.KILL_LIST:
@@ -505,36 +498,37 @@ async def send_events(message: Message):
                 lst = [words[i] for i in range(len(words)) if i != 0]
                 text = " ".join(lst)
 
-                slv = morph.parse(words[0].lower())[0]
                 await message.answer_photo(
                     photo=FSInputFile(f"../data/kill/({random.randint(1, 6)}).jpg"),
-                    caption=f"{message.from_user.first_name} "
-                           f"{slv.inflect({'past', 'sing', 'indc'}).word} {text}"
+                    caption=f"{md(message.from_user.first_name)} "
+                           f"{inflect_past(words[0])} {md(text)}"
                 )
 
-        if (unsigned[0] in base.QUAT_LIST[0] and 
+        if (len(unsigned) >= 3 and
+            unsigned[0] in base.QUAT_LIST[0] and 
             unsigned[1] in base.QUAT_LIST[1] and 
             unsigned[2] in base.QUAT_LIST[2]):
             try:
-                word = requests.get('http://fucking-great-advice.ru/api/random').json()
-                await message.reply(word["text"])
-            except:
-                pass
+                # без таймаута и в обработчике запрос мог надолго заморозить бота
+                resp = await asyncio.to_thread(requests.get, 'http://fucking-great-advice.ru/api/random', timeout=5)
+                await message.reply(md(resp.json()["text"]))
+            except Exception:
+                logging.warning("Сервис советов недоступен")
             return
 
     if message.chat.id < 0:
         # УПОМИНАНИЯ ПО ИМЕНАМ
         if names:
-            try:
-                await message.reply(notice(names, False, du.get_group_id(group_id), user_id))
-            except Exception:
-                pass
+            text = notice(names, False, du.get_group_id(group_id), user_id)
+            if text:
+                await message.reply(text)
             return
 
         # ПЕРЕВОДЧИК СЛОВ
         if (checker([i for i in low_mes], words, group_id, user_id, name.lower()) == len(low_mes) and 
             not any([engl_dict.check(i) for i in unsigned if len(i) > 1])):
             await message.reply(
-                f"[{message.from_user.first_name}](tg://user_id?id={user_id}) *>* {translator(words)}"
+                # раньше tg://user_id?id= — такой ссылки нет, упоминание не работало
+                f"[{plain(message.from_user.first_name)}](tg://user?id={user_id}) *>* {md(translator(words))}"
             )
             return

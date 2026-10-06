@@ -4,7 +4,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.bot import DefaultBotProperties
 
 
-import base, enchant, pymorphy3
+import os
+
+import base
+import enchant
+import pymorphy3
 
 bot = Bot(token=base.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 dp = Dispatcher(storage=MemoryStorage())
@@ -15,6 +19,7 @@ engl_dict = enchant.Dict("en_US")
 
 import sql
 
+os.makedirs('../db', exist_ok=True)
 db = sql.Base('../db/base.db')
 du = sql.User('../db/users.db')
 dg = sql.Group('../db/groups.db')

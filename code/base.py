@@ -1,8 +1,10 @@
-# ДАННЫЕ БОТА
-TOKEN = "XXXXXXXXXX"  # @chat_abobot
-DEBAG = "XXXXXXXXXX"  # Технический чат
+import os
 
-TEX_GROUP = "XXXXXXXXXX"
+# ДАННЫЕ БОТА (из переменных окружения)
+TOKEN = os.getenv("BOT_TOKEN", "XXXXXXXXXX")  # @chat_abobot
+DEBAG = os.getenv("DEBUG_CHAT_ID", "")  # Технический чат
+
+TEX_GROUP = os.getenv("TECH_GROUP_ID", "")
 
 # ОБРАЩЕНИЯ К ПОЛЬЗОВАТЕЛЯМ
 KILL_LIST = ["побить", "отмудохать", "избить", "уебать", "отметелить"]
