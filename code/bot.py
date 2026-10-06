@@ -1,49 +1,66 @@
 import asyncio
 import logging
-from datetime import date
+import traceback
 
-from init import bot, dp, db, dm
-from handlers import router
+from aiogram import Bot, Dispatcher
+from aiogram.client.bot import DefaultBotProperties
+from aiogram.enums.parse_mode import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import ErrorEvent
 
+import config
+import db
+from handlers import routers
+from handlers.chat import check_all
 
-def reset_month_if_needed(today=None):
-    """Статистика «за месяц» раньше нигде не обнулялась и копилась с момента создания таблиц.
-    При первом запуске месяц только запоминается — обнуление со следующей смены месяца"""
-    key = (today or date.today()).strftime("%Y-%m")
-    saved = db.get_meta("month")
-    if saved == key:
-        return False
-    if saved is not None:
-        db.reset_month()
-        dm.reset_all()
-        logging.info("Месячная статистика обнулена: %s → %s", saved, key)
-    db.set_meta("month", key)
-    return saved is not None
+CHECK_INTERVAL = 6 * 3600  # сверка статуса бота в чатах
 
 
-async def month_watcher():
+def create_dispatcher():
+    dp = Dispatcher(storage=MemoryStorage())
+    for router in routers:
+        dp.include_router(router)
+
+    @dp.errors()
+    async def on_error(event: ErrorEvent, bot: Bot):
+        """Ошибка обработчика — в лог и в технический чат"""
+        logging.exception("Ошибка обработки", exc_info=event.exception)
+        if config.DEBUG_CHAT_ID:
+            tb = "".join(traceback.format_exception(event.exception))[-3500:]
+            try:
+                await bot.send_message(config.DEBUG_CHAT_ID, f"<b>AboBot: ошибка</b>\n<pre>{tb.replace('<', '&lt;')}</pre>")
+            except Exception:
+                pass
+        return True
+
+    return dp
+
+
+async def periodic_check(bot: Bot):
     while True:
         try:
-            reset_month_if_needed()
+            await check_all(bot)
         except Exception:
-            logging.exception("Не удалось обнулить месячную статистику")
-        await asyncio.sleep(600)
+            logging.exception("Сверка статуса бота в чатах")
+        await asyncio.sleep(CHECK_INTERVAL)
 
 
 async def main() -> None:
-    dp.include_router(router)
+    bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    await db.connect(config.DATABASE_URL)
+    dp = create_dispatcher()
     await bot.delete_webhook(drop_pending_updates=True)
-    watcher = asyncio.create_task(month_watcher())
+    checker = asyncio.create_task(periodic_check(bot))
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
-        watcher.cancel()
+        checker.cancel()
+        await db.close()
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    
-    try:  asyncio.run(main())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("Бот остановлен")
         pass

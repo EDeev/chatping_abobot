@@ -14,10 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY code/ code/
 COPY data/ data/
-RUN useradd --create-home --uid 1000 app && mkdir -p db && chown -R app:app /app
+RUN useradd --create-home --uid 1000 app && chown -R app:app /app
 USER app
-VOLUME ["/app/db"]
 
-# пути к базам и картинкам в коде — относительно папки code/ (../db, ../data)
+# пути к картинкам в коде — относительно папки code/ (../data)
 WORKDIR /app/code
 CMD ["python", "bot.py"]

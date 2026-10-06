@@ -3,9 +3,26 @@ services:
     build: .
     image: ghcr.io/edeev/chatping_abobot:latest
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://abobot:abobot@db:5432/abobot
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: abobot
+      POSTGRES_PASSWORD: abobot
+      POSTGRES_DB: abobot
     volumes:
-      - db:/app/db
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abobot"]
+      interval: 5s
+      retries: 10
     restart: unless-stopped
 
 volumes:
-  db:
+  pgdata:
